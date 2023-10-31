@@ -1,6 +1,7 @@
 use alloc::collections::VecDeque;
 use sha2::{Sha256, Digest};
 use base16ct;
+// use hex;
 
 use core::ops::SubAssign;
 use core::iter::repeat;
@@ -135,16 +136,102 @@ pub(crate) fn find_top_std_2(
     hashes
 }
 
+// pub(crate) fn find_top_std_3(
+//     cntrs: &Vec<Vec<Vec2>>, depth: usize, n_sect: usize, grid_size: usize, rect: Rect,
+// ) -> Vec<String> {
+//     let mut hashes = vec![];
+//     if cntrs.len() == 0 {
+//         return hashes;
+//     }
+
+//     const N: usize = 2;
+//     let ss = GenPolyLines::select_top_all_3(cntrs, depth, grid_size, rect);
+//     if ss.len() < n_sect {
+//         return hashes;
+//     }
+
+//     let mut best_totals: Vec<(f64, Vec<u8>)> = Vec::with_capacity(depth);
+
+//     let mut ff = |d: f64, hash: Vec<u8>| {
+//         if let Some(_) = best_totals.iter().find(|a| a.0 == d) {
+//             return
+//         }
+//         else {
+//             if best_totals.len() == depth {
+//                 let m = best_totals.iter()
+//                     .enumerate()
+//                     .max_by(|(_, a), (_, b)|
+//                         a.0.partial_cmp(&b.0).unwrap_or(core::cmp::Ordering::Equal)
+//                     )
+//                     .map(|(index, _)| index);
+
+//                 if let Some(i) = m {
+//                     best_totals[i] = (d, hash);
+//                 }
+//             } else {
+//                 best_totals.push((d, hash));
+//             }
+//         }
+//     };
+
+//     let mut stack: Vec<usize> = repeat(0).take(n_sect).collect();
+
+//     loop {
+//         let mut sco = 0.;
+//         let mut h: Vec<u8> = Vec::new();
+//         for l in 0..n_sect {
+//             let k = stack[l];
+//             if k < ss[l].len() {
+//                 sco += ss[l][k].0;
+//                 h.extend(ss[l][k].1.clone());
+//             }
+//         }
+//         ff(sco, h);
+
+//         let mut j = 0;
+//         while j < n_sect {
+//             if stack[j] < N - 1 {
+//                 stack[j] += 1;
+//                 break
+//             }
+//             stack[j] = 0;
+//             j += 1;
+//         }
+//         if j == n_sect {
+//             break
+//         }
+//     }
+
+//     best_totals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+//     for hash in best_totals.iter() {
+//         let mut hasher = Sha256::new();
+//         hasher.update(hash.1.as_slice());
+
+//         let mut a: Vec<u8> = repeat(0).take(32 * n_sect).collect();
+//         let mut buf= a.as_mut();
+//         let hash = hasher.finalize();
+//         let hex_hash = base16ct::lower::encode_str(&hash, &mut buf).unwrap();
+
+//         hashes.push(hex_hash.to_string());
+//     }
+//     hashes.dedup();
+//     hashes
+// }
+
 pub(crate) fn find_top_std_3(
-    cntrs: &Vec<Vec<Vec2>>, depth: usize, n_sect: usize, grid_size: usize, rect: Rect,
+    centers: &Vec<Vec<Vec2>>,
+    depth: usize,
+    n_sect: usize,
+    grid_size: usize,
+    rect: Rect,
 ) -> Vec<String> {
     let mut hashes = vec![];
-    if cntrs.len() == 0 {
+    if centers.is_empty() {
         return hashes;
     }
 
     const N: usize = 2;
-    let ss = GenPolyLines::select_top_all_3(cntrs, depth, grid_size, rect);
+    let ss = GenPolyLines::select_top_all_3(centers, depth, grid_size, rect);
     if ss.len() < n_sect {
         return hashes;
     }
@@ -152,28 +239,26 @@ pub(crate) fn find_top_std_3(
     let mut best_totals: Vec<(f64, Vec<u8>)> = Vec::with_capacity(depth);
 
     let mut ff = |d: f64, hash: Vec<u8>| {
-        if let Some(_) = best_totals.iter().find(|a| a.0 == d) {
-            return
-        }
-        else {
+        if best_totals.iter().any(|a| a.0 == d) {
+            return;
+        } else {
             if best_totals.len() == depth {
-                let m = best_totals.iter()
+                let m = best_totals
+                    .iter()
                     .enumerate()
-                    .max_by(|(_, a), (_, b)|
-                        a.0.partial_cmp(&b.0).unwrap_or(core::cmp::Ordering::Equal)
-                    )
+                    .max_by(|(_, a), (_, b)| a.0.partial_cmp(&b.0).unwrap_or(core::cmp::Ordering::Equal))
                     .map(|(index, _)| index);
 
                 if let Some(i) = m {
-                    best_totals[i] = (d, hash);
+                    best_totals[i] = (d, hash.clone());
                 }
             } else {
-                best_totals.push((d, hash));
+                best_totals.push((d, hash.clone()));
             }
         }
     };
 
-    let mut stack: Vec<usize> = repeat(0).take(n_sect).collect();
+    let mut stack: Vec<usize> = vec![0; n_sect];
 
     loop {
         let mut sco = 0.;
@@ -182,7 +267,7 @@ pub(crate) fn find_top_std_3(
             let k = stack[l];
             if k < ss[l].len() {
                 sco += ss[l][k].0;
-                h.extend(ss[l][k].1.clone());
+                h.extend(ss[l][k].1.iter().cloned());
             }
         }
         ff(sco, h);
@@ -191,29 +276,33 @@ pub(crate) fn find_top_std_3(
         while j < n_sect {
             if stack[j] < N - 1 {
                 stack[j] += 1;
-                break
+                break;
             }
             stack[j] = 0;
             j += 1;
         }
         if j == n_sect {
-            break
+            break;
         }
     }
 
-    best_totals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     for hash in best_totals.iter() {
         let mut hasher = Sha256::new();
-        hasher.update(hash.1.as_slice());
+        hasher.update(&hash.1);
 
-        let mut a: Vec<u8> = repeat(0).take(32 * n_sect).collect();
-        let mut buf= a.as_mut();
-        let hash = hasher.finalize();
-        let hex_hash = base16ct::lower::encode_str(&hash, &mut buf).unwrap();
+        let hash_result = hasher.finalize();
+        let mut hex_hash = String::with_capacity(hash_result.len() * 2);
 
-        hashes.push(hex_hash.to_string());
+        for byte in hash_result.iter() {
+            hex_hash.push_str(&format!("{:02x}", byte));
+        }
+
+        // Comprobación manual de duplicados
+        if !hashes.contains(&hex_hash) {
+            hashes.push(hex_hash);
+        }
     }
-    hashes.dedup();
+
     hashes
 }
 
